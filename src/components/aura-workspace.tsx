@@ -18,7 +18,8 @@ type MockupSpec = { title: string; purpose: string; navigation: string[]; action
 type Comment = { id: string; message: string; created_at: string; profiles?: { display_name: string } };
 type TeamUser = { id: string; email: string; display_name: string; role: AuraRole; active: boolean; created_at: string };
 const t11Stages = [
-  { id: "1", label: "1. Tinjauan Sistem yang Ada (1.1 dan 1.2)" },
+  { id: "1.1", label: "1.1. Penjelasan dari Sistem yang Ada" },
+  { id: "1.2", label: "1.2. Latar Belakang Pengembangan Aplikasi" },
   { id: "2", label: "2. Tujuan Pembuatan Sistem Baru" },
   { id: "3", label: "3. Definisi Lingkup Pekerjaan (3.1–3.3)" },
   { id: "4", label: "4. Ketersediaan Sistem (4.1–4.2)" },
@@ -34,6 +35,32 @@ const t11Stages = [
 function mergeT11Section(current: string, generated: string, sectionId: string) {
   const placeholder = /\n\nDraft T\.1\.1 belum dibuat\.[\s\S]*$/;
   const base = current.replace(placeholder, "").trimEnd();
+  if (sectionId === "1.1" || sectionId === "1.2") {
+    const generatedSubsection = generated.trim();
+    const subsectionPattern = /^#{1,6}\s*1\.(1|2)\.\s+[^\n]+$/gm;
+    const subsectionMatches = [...base.matchAll(subsectionPattern)];
+    const targetMatch = subsectionMatches.find(match => match[1] === sectionId.slice(-1));
+    const rootPattern = /^#{1,6}\s*1\.\s+[^\n]+$/gm;
+    const rootMatch = rootPattern.exec(base);
+    const rootTwoPattern = /^#{1,6}\s*2\.\s+[^\n]+$/gm;
+    const rootTwoMatch = rootTwoPattern.exec(base);
+    const stripParentTitle = (value: string) => value.replace(/^#{1,6}\s*1\.\s+Tinjauan Sistem yang Ada[^\n]*\n+/i, "").trim();
+    const sectionText = stripParentTitle(generatedSubsection);
+    if (targetMatch) {
+      const start = targetMatch.index ?? 0;
+      const nextSubsection = subsectionMatches.find(match => (match.index ?? 0) > start);
+      const nextMain = rootTwoMatch && (rootTwoMatch.index ?? 0) > start ? rootTwoMatch : null;
+      const end = Math.min(nextSubsection?.index ?? base.length, nextMain?.index ?? base.length);
+      return `${base.slice(0, start).trimEnd()}\n\n${sectionText}\n\n${base.slice(end).trimStart()}`.trim();
+    }
+    const headingToAdd = !rootMatch ? "## 1. Tinjauan Sistem yang Ada\n\n" : "";
+    if (sectionId === "1.1" && rootMatch) {
+      const afterRoot = (rootMatch.index ?? 0) + rootMatch[0].length;
+      return `${base.slice(0, afterRoot)}\n\n${sectionText}\n\n${base.slice(afterRoot).trimStart()}`.trim();
+    }
+    const insertionPoint = rootTwoMatch?.index ?? base.length;
+    return `${base.slice(0, insertionPoint).trimEnd()}\n\n${headingToAdd}${sectionText}\n\n${base.slice(insertionPoint).trimStart()}`.trim();
+  }
   const headingPattern = /^(?:#{1,6}\s*)?(10|[1-9])\.\s+([^\n]+)$/gm;
   const sections: { id: string; start: number; end: number }[] = [];
   let match: RegExpExecArray | null;
@@ -52,10 +79,11 @@ function mergeT11Section(current: string, generated: string, sectionId: string) 
 }
 
 function hasT11Stage(content: string, sectionId: string) {
-  const headings = [...content.matchAll(/^(?:#{1,6}\s*)?(10|[1-9])\.\s+([^\n]+)$/gm)];
+  const headings = [...content.matchAll(/^(?:#{1,6}\s*)?(10|[1-9])(?:\.(\d+))?\.\s+([^\n]+)$/gm)];
   return headings.some(match => {
-    const isOther = match[1] === "10" && match[2].toLowerCase().includes("lain-lain");
-    return sectionId === "11" ? isOther : !isOther && match[1] === sectionId;
+    const headingId = match[2] ? `${match[1]}.${match[2]}` : match[1];
+    const isOther = match[1] === "10" && match[3].toLowerCase().includes("lain-lain");
+    return sectionId === "11" ? isOther : !isOther && headingId === sectionId;
   });
 }
 
@@ -514,7 +542,7 @@ export default function AuraWorkspace({ user, demoMode = false }: { user: AuraUs
               {kind === "t11" && <div className="project-meta" style={{margin:"5px 0 9px"}}>Tahap T.1.1 terisi: {t11CompletedCount}/{t11Stages.length}. {t11Complete ? "Bagian utama terdeteksi lengkap; Analis tetap perlu memeriksa subbagian dan isi." : "Persetujuan Analis terbuka setelah semua tahap utama disusun."}</div>}
               <textarea className="field-area" value={draft} readOnly={user.role === "head" || kind === "t01" || (user.role === "analis" && docs.find(d => d.kind === kind)?.status === "approved")} onChange={e=>setDraft(e.target.value)} placeholder="Isi draft atau minta AI menyusunnya berdasarkan knowledge base…" />
               <div className="editor-actions"><div className="editor-actions-left">{user.role === "analis" && kind !== "t01" && <button className="button secondary small" onClick={()=>saveDraft("draft")} disabled={busy}>Simpan hasil</button>}<button className="button ghost small" onClick={()=>exportDocument("word")} disabled={busy}>Ekspor Word</button><button className="button ghost small" onClick={()=>exportDocument("excel")} disabled={busy}>Ekspor Excel</button></div><div className="editor-actions-right">{user.role === "analis" && kind !== "t01" && docs.some(d=>d.kind===kind) && <><button className="button ghost small" onClick={requestChanges} disabled={busy}>Minta revisi</button><button className="button danger small" onClick={rejectDraft} disabled={busy}>Tolak hasil</button><button className="button primary small" onClick={approveDraft} disabled={busy||(kind==="t11"&&!t11Complete)} title={kind==="t11"&&!t11Complete?"Susun semua tahap T.1.1 terlebih dahulu":""}>Terima hasil</button></>}{user.role === "head" && project.status === "pending_approval" && <><button className="button secondary small" onClick={requestChanges} disabled={busy}>Kembalikan ke Analis</button><button className="button primary small" onClick={approveDraft} disabled={busy}>Setujui final</button></>}</div></div>
-            </section><aside className="editor-side">{user.role === "analis" && kind !== "t01" && <div className="ai-card"><h4>Bantu susun dengan AURA</h4><p>{kind === "t11" ? "Susun T.1.1 per bagian. Hasil tiap tahap digabung ke draft; periksa dan simpan sebelum lanjut." : kind === "mapping" ? "Mapping kode bersifat opsional. AURA akan memakai T.1.1 yang sudah diterima sebagai acuan." : "AURA akan memakai T.1.1 yang sudah diterima serta User Manual SIP IKNB sebagai acuan mockup."}</p>{kind === "t11" && <label className="field-label" style={{display:"block",marginBottom:10}}>Tahap T.1.1<select className="field-select" value={t11SectionId} onChange={e=>setT11SectionId(e.target.value)} disabled={busy} style={{width:"100%",marginTop:5}}>{t11Stages.map(stage=><option key={stage.id} value={stage.id}>{stage.label}</option>)}</select></label>}<textarea className="field-area" value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder={kind === "t11" ? "Opsional: fokus atau arahan khusus untuk tahap ini…" : "Instruksi atau fokus penyusunan untuk artefak ini…"}/><button className="button primary small" onClick={generateDraft} disabled={busy||((kind==="mockup"||kind==="mapping")&&!t11Accepted)}>{busy ? "Menyusun draft…" : kind === "t11" ? `Susun tahap ${t11SectionId}` : kind === "mockup" ? "Susun draft Mockup" : "Susun draft Mapping (opsional)"}<span>→</span></button>{kind === "t11" && <small style={{display:"block",marginTop:8,color:"#65736e"}}>Bagian yang sudah ada akan dipertahankan. Tahap 1 mencakup 1.1 dan 1.2. Simpan draft setelah menyusun beberapa tahap.</small>}{!t11Accepted&&(kind==="mockup"||kind==="mapping")&&<small style={{display:"block",marginTop:8,color:"#896629"}}>Terima draft T.1.1 terlebih dahulu untuk membuka tahap ini.</small>}</div>}
+            </section><aside className="editor-side">{user.role === "analis" && kind !== "t01" && <div className="ai-card"><h4>Bantu susun dengan AURA</h4><p>{kind === "t11" ? "Susun T.1.1 per bagian. Hasil tiap tahap digabung ke draft; periksa dan simpan sebelum lanjut." : kind === "mapping" ? "Mapping kode bersifat opsional. AURA akan memakai T.1.1 yang sudah diterima sebagai acuan." : "AURA akan memakai T.1.1 yang sudah diterima serta User Manual SIP IKNB sebagai acuan mockup."}</p>{kind === "t11" && <label className="field-label" style={{display:"block",marginBottom:10}}>Tahap T.1.1<select className="field-select" value={t11SectionId} onChange={e=>setT11SectionId(e.target.value)} disabled={busy} style={{width:"100%",marginTop:5}}>{t11Stages.map(stage=><option key={stage.id} value={stage.id}>{stage.label}</option>)}</select></label>}<textarea className="field-area" value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder={kind === "t11" ? "Opsional: fokus atau arahan khusus untuk tahap ini…" : "Instruksi atau fokus penyusunan untuk artefak ini…"}/><button className="button primary small" onClick={generateDraft} disabled={busy||((kind==="mockup"||kind==="mapping")&&!t11Accepted)}>{busy ? "Menyusun draft…" : kind === "t11" ? `Susun tahap ${t11SectionId}` : kind === "mockup" ? "Susun draft Mockup" : "Susun draft Mapping (opsional)"}<span>→</span></button>{kind === "t11" && <small style={{display:"block",marginTop:8,color:"#65736e"}}>Bagian yang sudah ada akan dipertahankan. Tahap 1.1 dan 1.2 dibuat terpisah. Simpan draft setelah menyusun beberapa tahap.</small>}{!t11Accepted&&(kind==="mockup"||kind==="mapping")&&<small style={{display:"block",marginTop:8,color:"#896629"}}>Terima draft T.1.1 terlebih dahulu untuk membuka tahap ini.</small>}</div>}
               <div className="evidence-card"><h4>Sumber yang dipakai</h4>{sources.length ? sources.map((s,i)=><div className="evidence-row" key={`${s.title}-${i}`}><b>{s.title}</b>{s.category}{s.score ? ` · kecocokan ${Math.round(s.score*100)}%` : ""}</div>) : <div className="evidence-row">Sumber akan muncul setelah draft dibuat oleh AI.</div>}</div>
               <div className="review-card"><h4>Catatan review</h4>{comments.map(c=><div className="comment" key={c.id}>{c.message}<small>{c.profiles?.display_name || "Anggota tim"} · {new Date(c.created_at).toLocaleDateString("id-ID")}</small></div>)}<form className="comment-box" onSubmit={addComment}><input value={commentText} onChange={e=>setCommentText(e.target.value)} placeholder="Tulis catatan…"/><button className="button secondary small" type="submit">Kirim</button></form><div className="project-meta">Simpan draft terlebih dahulu untuk membuka catatan review.</div></div>
             </aside></div>

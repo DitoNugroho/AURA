@@ -57,52 +57,84 @@ export async function embedTexts(texts: string[]) {
   return vectors;
 }
 
+const DEFAULT_MAX_TOKENS = 8192;
+const HARD_CEILING = 32768;
+
+function envInt(name: string, fallback: number): number {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : fallback;
+}
+
+export const AI_CONFIG = {
+  model: process.env.DATABYTE_MODEL || "MiniMax-M3",
+  maxTokens: Math.min(envInt("DATABYTE_MAX_TOKENS", DEFAULT_MAX_TOKENS), HARD_CEILING),
+  tokenParam: (process.env.DATABYTE_TOKEN_PARAM === "max_completion_tokens"
+    ? "max_completion_tokens"
+    : "max_tokens") as "max_tokens" | "max_completion_tokens",
+};
+
+const SYSTEM_GUARD =
+  "PENTING: Berikan hanya hasil akhir yang diminta. Jangan tampilkan penalaran internal, " +
+  "proses berpikir, analisis langkah demi langkah, atau teks pembuka. Untuk jawaban " +
+  "terstruktur, keluarkan langsung format yang diminta.";
+
 export async function generateDraftText(instructions: string, input: string) {
-  const model = process.env.DATABYTE_MODEL || "MiniMax-M3";
+  // Satu-satunya deklarasi maxTokens — tidak ada lagi variabel lokal bernama sama.
+  const { model, maxTokens, tokenParam } = AI_CONFIG;
+
   const normalizedModel = model.toLowerCase();
   const isMiniMax31Flash = normalizedModel.includes("minimax-m3.1-flash");
   const isMiniMax3 = normalizedModel.includes("minimax-m3") && !isMiniMax31Flash;
-  // Some DataByte reasoning models spend the whole completion budget on
-  // internal reasoning (and return no visible text) when given long T.1.1
-  // context. Keep a configurable budget and allow a larger ceiling for these
-  // models; callers can set DATABYTE_MAX_TOKENS per deployment.
-  const configuredMaxTokens = Number(process.env.DATABYTE_MAX_TOKENS || 16384);
-  const maxTokens = Number.isInteger(configuredMaxTokens) && configuredMaxTokens >= 256
-    ? Math.min(configuredMaxTokens, 32768)
-    : 16384;
+
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    { role: "system", content: `${instructions}\n\nPENTING: Berikan hanya hasil akhir yang diminta. Jangan tampilkan penalaran internal, proses berpikir, analisis langkah demi langkah, atau teks pembuka. Untuk jawaban terstruktur, keluarkan langsung format yang diminta.` },
+    { role: "system", content: `${instructions}\n\n${SYSTEM_GUARD}` },
     { role: "user", content: input },
   ];
+
   const requestBody = {
     model,
-    max_completion_tokens: maxTokens,
     messages,
+    temperature: 0.3,
+    [tokenParam]: maxTokens,
     ...(isMiniMax3 ? { thinking: { type: "disabled" as const } } : {}),
     ...(isMiniMax31Flash ? { reasoning_effort: "low" as const } : {}),
-  };
+  } as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
+
   const result = await getDataByte().chat.completions.create(requestBody);
   const choice = result.choices[0];
   const messageContent: unknown = choice?.message?.content;
   const text = typeof messageContent === "string"
     ? messageContent.trim()
     : Array.isArray(messageContent)
-      ? messageContent.map((part: { type?: unknown; text?: unknown }) => part.type === "text" && typeof part.text === "string" ? part.text : "").join("\n").trim()
+      ? messageContent
+          .map((part: { type?: unknown; text?: unknown }) =>
+            part.type === "text" && typeof part.text === "string" ? part.text : "")
+          .join("\n").trim()
       : "";
+
   if (!text) {
     const completionTokens = result.usage?.completion_tokens;
     const details = [
       `model=${result.model || model}`,
+      `token_param=${tokenParam}`,
+      `max_tokens_diminta=${maxTokens}`,
       choice?.finish_reason ? `finish_reason=${choice.finish_reason}` : "finish_reason=tidak tersedia",
       typeof completionTokens === "number" ? `completion_tokens=${completionTokens}` : "completion_tokens=tidak tersedia",
-      typeof result.usage?.completion_tokens_details?.reasoning_tokens === "number" ? `reasoning_tokens=${result.usage.completion_tokens_details.reasoning_tokens}` : "",
+      typeof result.usage?.completion_tokens_details?.reasoning_tokens === "number"
+        ? `reasoning_tokens=${result.usage.completion_tokens_details.reasoning_tokens}` : "",
       choice?.message?.refusal ? "respons ditolak model" : "konten jawaban kosong",
     ].filter(Boolean).join(", ");
+
     const remedy = choice?.finish_reason === "length"
-      ? `Respons berhenti pada batas ${maxTokens} token sebelum teks jawaban tersedia. Model ${model} kemungkinan memakai seluruh jatah untuk reasoning atau tidak kompatibel dengan parameter token/format endpoint DataByte. Coba naikkan DATABYTE_MAX_TOKENS (batas AURA ${32768}) atau gunakan model DataByte yang mengembalikan teks pada endpoint Chat Completions. Model MiniMax-M3.1-Flash dijalankan dengan reasoning_effort=low; MiniMax-M3 dengan thinking nonaktif.`
+      ? `Respons berhenti pada batas ${maxTokens} token (param ${tokenParam}) sebelum teks jawaban tersedia. ` +
+        `Model ${model} kemungkinan memakai seluruh jatah untuk reasoning, atau gateway DataByte mengabaikan ` +
+        `param ${tokenParam} dan memakai default internalnya. Coba ganti DATABYTE_TOKEN_PARAM ke ` +
+        `${tokenParam === "max_tokens" ? "max_completion_tokens" : "max_tokens"}, atau gunakan model DataByte lain.`
       : "Periksa ID model dan kompatibilitas respons endpoint DataByte.";
+
     throw new Error(`DataByte mengembalikan respons tanpa teks (${details}). ${remedy}`);
   }
+
   return {
     text,
     truncated: choice?.finish_reason === "length",

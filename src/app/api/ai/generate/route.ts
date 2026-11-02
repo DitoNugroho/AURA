@@ -6,8 +6,9 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const labels: Record<string, string> = { t01: "Dokumen T.0.1 Usulan PKSI", t11: "Dokumen T.1.1 Spesifikasi Kebutuhan (User Requirement)", mockup: "Rancangan Mockup UI/UX", mapping: "Mapping Kode Pelaporan", timeline: "Timeline Project", uat: "Skenario User Acceptance Test" };
-const t11Sections: Record<string, { title: string; templateAnchor: string }> = {
-  "1": { title: "1. Tinjauan Sistem yang Ada (termasuk 1.1 dan 1.2)", templateAnchor: "1. Tinjauan Sistem yang Ada" },
+const t11Sections: Record<string, { title: string; templateAnchor: string; templateEndAnchor?: string }> = {
+  "1.1": { title: "1.1. Penjelasan dari Sistem yang Ada", templateAnchor: "1. Tinjauan Sistem yang Ada", templateEndAnchor: "1.2. Latar Belakang Pengembangan Aplikasi" },
+  "1.2": { title: "1.2. Latar Belakang Pengembangan Aplikasi", templateAnchor: "1.2. Latar Belakang Pengembangan Aplikasi", templateEndAnchor: "2. Tujuan Pembuatan Sistem Baru" },
   "2": { title: "2. Tujuan Pembuatan Sistem Baru", templateAnchor: "2. Tujuan Pembuatan Sistem Baru" },
   "3": { title: "3. Definisi Lingkup Pekerjaan", templateAnchor: "3. Definisi Lingkup Pekerjaan" },
   "4": { title: "4. Ketersediaan Sistem", templateAnchor: "4. Ketersediaan Sistem" },
@@ -129,8 +130,13 @@ export async function POST(request: Request) {
       if (!anchorMatch) return Response.json({ error: `Bagian ${t11Section!.title} tidak ditemukan dalam teks template T.1.1 yang terindeks. Periksa hasil ekstraksi atau indeks ulang template.` }, { status: 409 });
       const start = anchorMatch.index + (anchorMatch[0].startsWith("\n") ? 1 : 0);
       const headingEnd = anchorMatch.index + anchorMatch[0].length;
-      const nextMajor = completeTemplate.slice(headingEnd).search(/\n(?:#{1,3}\s*)?(?:[1-9]|10)\.\s/);
-      templateContent = nextMajor >= 0 ? completeTemplate.slice(start, headingEnd + nextMajor) : completeTemplate.slice(start);
+      const escapedEndAnchor = t11Section!.templateEndAnchor?.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const endPattern = escapedEndAnchor ? new RegExp(`(?:^|\\n)(?:#{1,6}\\s*)?${escapedEndAnchor}[^\\n]*`, "i") : null;
+      const endMatch = endPattern?.exec(completeTemplate.slice(headingEnd));
+      const nextHeading = endMatch
+        ? endMatch.index + (endMatch[0].startsWith("\n") ? 1 : 0)
+        : completeTemplate.slice(headingEnd).search(/\n(?:#{1,3}\s*)?(?:[1-9]|10)\.\s/);
+      templateContent = nextHeading >= 0 ? completeTemplate.slice(start, headingEnd + nextHeading) : completeTemplate.slice(start);
       const requestEvidence = await search("Naskah Dinas", 8, String(body.projectId));
       evidence = requestEvidence.filter(item => item.document_id === requestSource.id);
       if (!evidence.length) return Response.json({ error: "T.0.1 belum menghasilkan bagian yang cocok untuk T.1.1. Pastikan dokumen T.0.1 berstatus disetujui, terindeks dengan embedding aktif, lalu coba lagi." }, { status: 409 });
@@ -165,7 +171,7 @@ export async function POST(request: Request) {
       ? `\nDraft saat ini untuk diperbarui:\n${existingDraft.slice(0, 16000)}\n`
       : "";
     const sectionInstructions = kind === "t11"
-      ? `${t11Instructions}\n\nMODE BERTAHAP: Susun hanya bagian ${t11Section!.title}. Pertahankan nomor, semua subjudul, dan tabel yang termasuk dalam rentang bagian ini sesuai cuplikan template. Untuk tahap 1, wajib sertakan 1.1 dan 1.2. Jangan keluarkan judul dokumen, daftar isi, atau bagian T.1.1 lainnya.`
+      ? `${t11Instructions}\n\nMODE BERTAHAP: Susun hanya bagian ${t11Section!.title}. Pertahankan nomor, subjudul, dan tabel yang termasuk dalam rentang bagian ini sesuai cuplikan template. Untuk tahap 1.1, keluarkan juga judul induk "1. Tinjauan Sistem yang Ada". Untuk tahap 1.2, keluarkan hanya subbagian 1.2 tanpa mengulang judul induk. Jangan keluarkan judul dokumen, daftar isi, atau bagian T.1.1 lainnya.`
       : instructions;
     const generated = await generateDraftText(
       sectionInstructions,

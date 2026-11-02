@@ -5,9 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 const allowedKinds = ["t01", "t11", "mockup", "mapping", "timeline", "uat"];
 
 function hasAllT11MainSections(content: string) {
-  const headings = [...content.matchAll(/^(?:#{1,6}\s*)?(10|[1-9])\.\s+([^\n]+)$/gm)];
-  const found = new Set(headings.map(match => match[1] === "10" && match[2].toLowerCase().includes("lain-lain") ? "11" : match[1]));
-  return ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"].every(section => found.has(section));
+  const headings = [...content.matchAll(/^(?:#{1,6}\s*)?(10|[1-9])(?:\.(\d+))?\.\s+([^\n]+)$/gm)];
+  const found = new Set(headings.map(match => match[1] === "10" && match[3].toLowerCase().includes("lain-lain") ? "11" : match[2] ? `${match[1]}.${match[2]}` : match[1]));
+  return ["1", "1.1", "1.2", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"].every(section => found.has(section));
 }
 
 export async function GET(request: NextRequest) {
