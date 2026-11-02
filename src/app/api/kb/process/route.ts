@@ -108,7 +108,7 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, chunks: chunks.length });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Indeksasi gagal.";
-    console.error(`[kb/process] Indeksasi gagal untuk ${document.file_name} (${documentId})`, e);
+    console.error("[kb/process] Indeksasi gagal untuk %s (%s)", document.file_name, documentId, e);
     await supabase.from("kb_documents").update({ processing_status: "failed", processing_message: message.slice(0, 500) }).eq("id", documentId);
     return Response.json({ error: message }, { status: 500 });
   }
