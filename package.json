@@ -1,0 +1,47 @@
+{
+  "name": "aura-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.110.0",
+    "@types/adm-zip": "^0.5.8",
+    "@xmldom/xmldom": "^0.9.10",
+    "adm-zip": "^0.6.0",
+    "bcryptjs": "^3.0.3",
+    "docx": "^9.7.1",
+    "docxtemplater": "^3.69.2",
+    "jose": "^6.2.3",
+    "mammoth": "^1.12.0",
+    "next": "^16.4.3",
+    "openai": "^6.45.0",
+    "pdf-lib": "^1.17.1",
+    "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^6.1.200",
+    "pizzip": "^3.2.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^10.14.0",
+    "eslint-config-next": "^0.2.4",
+    "supabase": "^2.122.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "allowScripts": {
+    "sharp@0.34.5": true,
+    "unrs-resolver@1.12.2": true
+  }
+}
