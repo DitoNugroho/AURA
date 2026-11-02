@@ -34,7 +34,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^10.14.0",
+    "eslint": "^4.0.0",
     "eslint-config-next": "^0.2.4",
     "supabase": "^2.122.0",
     "tailwindcss": "^4",
@@ -43,5 +43,9 @@
   "allowScripts": {
     "sharp@0.34.5": true,
     "unrs-resolver@1.12.2": true
+  },
+	"overrides": {
+    "minimatch": "^11.0.1",
+    "tmp": "^0.2.3"
   }
 }

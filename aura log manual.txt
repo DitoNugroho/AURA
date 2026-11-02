@@ -192,3 +192,7 @@ Jawab Ya/Tidak + bukti singkat:
 
 # GAYA
 Formal, lugas, aktif, tanpa basa-basi dan tanpa emoji. Jika instruksi saya bertentangan atau input tidak lengkap, tanyakan dulu (maksimal 5 pertanyaan, dikelompokkan) sebelum menulis draft.
+
+################################################################################################
+The npm audit report shows that the vulnerabilities (minimatch and tmp) are coming from older transitive dependencies like eslint, rimraf, and inquirer.
+Using npm audit fix --force in this case is risky because it tries to force a major version upgrade to eslint@10.14.0, which will likely break your existing linting configuration, rules, or build setup.
